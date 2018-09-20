@@ -1,23 +1,24 @@
 defmodule Prodcon do
   def start(producer_count \\ 5, consumer_count \\ 5, queue_size \\ 10) do
-    {:ok, queue} = GenServer.start_link(Queue, %{queue_size: queue_size})
+    queue = %{id: Queue, start: {Queue, :start_link, [%{queue_size: queue_size}]}}
     producers = Enum.map(1..producer_count, &create_producer(&1, queue))
     consumers = Enum.map(1..consumer_count, &create_consumer(&1, queue))
 
-    Supervisor.start_link(producers ++ consumers, strategy: :one_for_one)
+    # Supervisor.start_link([queue] ++ producers ++ consumers, strategy: :one_for_one)
+    Supervisor.start_link([queue] ++ producers, strategy: :one_for_one)
   end
 
   defp create_consumer(id, queue) do
     %{
       id: :"consumer_#{id}",
-      start: {Consumer, :start_link, [%{id: id, queue: queue}]}
+      start: {Consumer, :start_link, [%{id: "consumer_#{id}", queue: Queue}]}
     }
   end
 
   defp create_producer(id, queue) do
     %{
       id: :"producer_#{id}",
-      start: {Producer, :start_link, [%{id: id, queue: queue}]}
+      start: {Producer, :start_link, [%{id: "producer_#{id}", queue: Queue}]}
     }
   end
 end
@@ -38,10 +39,10 @@ defmodule Producer do
   defp schedule_work(id, queue) do
     :rand.seed(:exs1024s)
     job = :rand.uniform(10) * 100
-    IO.puts("\t\t\t\t\tPRODUCER #{id}: Generating job #{job}")
+    IO.puts("\t\t\t\t\t#{id}: Generating job #{job}")
     Process.sleep(job)
 
-    IO.puts("\t\t\t\t\tPRODUCER #{id}: Sending job #{job} to the queue")
+    IO.puts("\t\t\t\t\t#{id}: Sending job #{job} to #{queue}")
     GenServer.cast(queue, {:producer, job, id})
 
     schedule_work(id, queue)
@@ -69,6 +70,10 @@ end
 
 defmodule Queue do
   use GenServer
+
+  def start_link(args) do
+    GenServer.start_link(__MODULE__, args, name: __MODULE__)
+  end
 
   def init(
         %{
